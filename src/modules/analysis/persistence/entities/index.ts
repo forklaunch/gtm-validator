@@ -7,3 +7,4 @@
 export * from "./analysisRecord.entity";
 export * from "./startup-idea.entity";
 export * from "./gtm-report.entity";
+export * from "./founder.entity";

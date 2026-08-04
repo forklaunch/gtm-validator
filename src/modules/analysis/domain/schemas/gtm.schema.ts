@@ -1,6 +1,7 @@
 import {
   array,
   boolean,
+  email,
   number,
   optional,
   string,
@@ -10,7 +11,33 @@ import {
 
 export const SubmitIdeaSchema = {
   title: string,
-  pitch: string
+  pitch: string,
+  founder: {
+    name: string,
+    email: email,
+    company: optional(string)
+  }
+};
+
+export const FunnelIdeaSchema = {
+  id: uuid,
+  title: string,
+  latestScore: optional(number),
+  latestVerdict: optional(string),
+  versions: number,
+  blueprintGenerated: boolean,
+  createdAt: string
+};
+
+export const FunnelResponseSchema = {
+  founders: array({
+    id: uuid,
+    name: string,
+    email: string,
+    company: optional(string),
+    firstSeenAt: string,
+    ideas: array(FunnelIdeaSchema)
+  })
 };
 
 export const ReanalyzeSchema = {

@@ -15,10 +15,10 @@ export const GtmReportEntity = defineComplianceEntity({
     idea: () => fp.manyToOne(StartupIdeaEntity),
     version: fp.integer().compliance('none'),
     /** Snapshot of the pitch this report analyzed */
-    pitchSnapshot: fp.text().compliance('none'),
+    pitchSnapshot: fp.text().compliance('pii'),
     viabilityScore: fp.integer().compliance('none'),
     verdict: fp.string().compliance('none'),
-    summary: fp.text().compliance('none'),
+    summary: fp.text().compliance('pii'),
     dimensions: fp.json().compliance('none'),
     signals: fp.json().compliance('none'),
     bearCase: fp.json().compliance('none'),

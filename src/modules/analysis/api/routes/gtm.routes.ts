@@ -1,6 +1,7 @@
 import { forklaunchRouter, schemaValidator } from '@gtm-validator/core';
 import {
   generateBlueprint,
+  getFunnel,
   getIdeaReports,
   listIdeas,
   reanalyzeIdea,
@@ -25,6 +26,7 @@ export const reanalyzeIdeaRoute = gtmRouter.post(
   reanalyzeIdea
 );
 export const refineIdeaRoute = gtmRouter.post('/ideas/:id/refine', refineIdea);
+export const getFunnelRoute = gtmRouter.get('/funnel', getFunnel);
 export const generateBlueprintRoute = gtmRouter.post(
   '/ideas/:id/blueprint',
   generateBlueprint

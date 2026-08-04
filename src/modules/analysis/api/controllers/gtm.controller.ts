@@ -1,5 +1,7 @@
 import { handlers, schemaValidator, string, uuid } from '@gtm-validator/core';
+import { getEnvVar } from '@forklaunch/core/services';
 import {
+  FunnelResponseSchema,
   IdeaListResponseSchema,
   ReanalyzeSchema,
   RefineResponseSchema,
@@ -132,6 +134,27 @@ export const refineIdea = handlers.post(
     } catch (error) {
       if (!handleKnown(error, res)) throw error;
     }
+  }
+);
+
+export const getFunnel = handlers.get(
+  schemaValidator,
+  '/funnel',
+  {
+    name: 'Marketing Funnel',
+    summary:
+      'Founders who tried the validator with their ideas and outcomes (internal; requires x-funnel-token)',
+    access: 'public',
+    requestHeaders: { 'x-funnel-token': string },
+    responses: { 200: FunnelResponseSchema, 403: string }
+  },
+  async (req, res) => {
+    const expected = getEnvVar('FUNNEL_TOKEN') ?? '';
+    if (!expected || req.headers['x-funnel-token'] !== expected) {
+      res.status(403).send('Funnel access requires a valid x-funnel-token');
+      return;
+    }
+    res.status(200).json({ founders: await gtmService().funnel() });
   }
 );
 

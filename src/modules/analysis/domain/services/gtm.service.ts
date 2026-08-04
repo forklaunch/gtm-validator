@@ -1,7 +1,9 @@
+import { createHash } from 'node:crypto';
 import { OpenTelemetryCollector } from '@forklaunch/core/http';
 import { EntityManager } from '@mikro-orm/core';
 import { Metrics } from '@gtm-validator/monitoring';
 import {
+  FounderEntity,
   GtmReportEntity,
   StartupIdeaEntity,
   type GtmReport,
@@ -127,14 +129,75 @@ export class GtmService {
   ) {}
 
   /** Full pipeline: queries → signals → themed analysis + adversarial pass. */
-  analyze = async (data: { title: string; pitch: string }): Promise<ReportPayload> => {
+  analyze = async (data: {
+    title: string;
+    pitch: string;
+    founder: { name: string; email: string; company?: string };
+  }): Promise<ReportPayload> => {
+    const emailLookupHash = createHash('sha256')
+      .update(data.founder.email.trim().toLowerCase())
+      .digest('hex');
+    let founder = await this.em.findOne(FounderEntity, { emailLookupHash });
+    if (!founder) {
+      founder = this.em.create(FounderEntity, {
+        name: data.founder.name,
+        email: data.founder.email.trim().toLowerCase(),
+        emailLookupHash,
+        company: data.founder.company ?? null,
+        organizationId: GTM_TENANT_ID
+      });
+    }
     const idea = this.em.create(StartupIdeaEntity, {
       title: data.title,
       pitch: data.pitch,
+      founder,
       organizationId: GTM_TENANT_ID
     });
     await this.em.flush();
     return this.runAnalysis(idea, 1);
+  };
+
+  /** Marketing funnel export: founders with their ideas and outcomes. */
+  funnel = async () => {
+    const founders = await this.em.find(
+      FounderEntity,
+      {},
+      { orderBy: { createdAt: 'DESC' } }
+    );
+    const out = [];
+    for (const f of founders) {
+      const ideas = await this.em.find(
+        StartupIdeaEntity,
+        { founder: f.id },
+        { orderBy: { createdAt: 'DESC' } }
+      );
+      const enriched = [];
+      for (const idea of ideas) {
+        const latest = await this.em.findOne(
+          GtmReportEntity,
+          { idea: idea.id },
+          { orderBy: { version: 'DESC' } }
+        );
+        enriched.push({
+          id: idea.id,
+          title: idea.title,
+          latestScore: latest?.viabilityScore,
+          latestVerdict: latest?.verdict,
+          versions: latest?.version ?? 0,
+          blueprintGenerated: Boolean(latest?.blueprint),
+          createdAt: idea.createdAt.toISOString()
+        });
+      }
+      out.push({
+        id: f.id,
+        name: f.name,
+        email: f.email,
+        company: f.company ?? undefined,
+        firstSeenAt: f.createdAt.toISOString(),
+        ideas: enriched
+      });
+    }
+    return out;
   };
 
   /** Re-run analysis on a (possibly user-edited) pitch as a new version. */

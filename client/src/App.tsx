@@ -399,15 +399,92 @@ const SOURCE_LABELS: Record<string, string> = {
   linkedin: 'LinkedIn'
 };
 
+const SYSTEM_DIAGRAM = `graph TD
+  B["your browser<br/>SHA-256 fingerprint computed locally"] -->|TLS| A["analysis service<br/>ForkLaunch · Node"]
+  A --> Q["AI query generation"]
+  Q --> HN["Hacker News<br/>Algolia API"]
+  Q --> GH["GitHub<br/>repo search"]
+  Q --> RD["Reddit<br/>OAuth app-only"]
+  HN --> SC["evidence-weighted scoring<br/>5 GTM lenses"]
+  GH --> SC
+  RD --> SC
+  A --> F["Azure AI Foundry<br/>scoring · adversarial pass · blueprints"]
+  SC --> F
+  F --> PG[("Postgres<br/>pitch + identity encrypted<br/>AES-256-GCM")]
+  subgraph ISO["tenant isolation — enforced in software"]
+    PG --> TA["tenant A rows<br/>HKDF key A"]
+    PG --> TB["tenant B rows<br/>HKDF key B"]
+  end`;
+
+function HowItWorks() {
+  return (
+    <>
+      <div className="card">
+        <h2>How the gauntlet works</h2>
+        <p className="meta" style={{ marginTop: 0 }}>
+          Every arrow below runs on each analysis — nothing is mocked.
+        </p>
+        <Mermaid chart={SYSTEM_DIAGRAM} />
+        <ol className="steps">
+          <li>
+            <strong>Fingerprint first.</strong> Your browser computes a SHA-256
+            hash of the idea before upload — a timestamped proof of what you
+            submitted, computed locally.
+          </li>
+          <li>
+            <strong>Evidence gathering.</strong> The AI writes research
+            queries, then the service pulls live signals: community pain from
+            Reddit, builder attention from Hacker News, existing competition
+            from GitHub.
+          </li>
+          <li>
+            <strong>Scoring and the bear case.</strong> Azure AI Foundry
+            scores five GTM lenses against that evidence, then runs a second,
+            adversarial pass instructed to kill the idea.
+          </li>
+          <li>
+            <strong>Sealed storage.</strong> Your pitch, name, and email are
+            encrypted (AES-256-GCM) before they reach Postgres. Workflow
+            metadata stays queryable; content does not.
+          </li>
+        </ol>
+      </div>
+      <div className="card">
+        <h2>
+          Tenant isolation
+          <span className="badge ok">enforced</span>
+        </h2>
+        <p>
+          Every row carries an organization id. A tenant filter scopes every
+          query, Postgres row-level security backs it at the database, and
+          encryption keys are HKDF-derived per tenant — even raw database
+          access can't decrypt another tenant's data. It's the same
+          compliance machinery ForkLaunch runs for healthcare deployments,
+          pointed at your startup idea.
+        </p>
+        <div className="sec-strip">
+          <span className="sec-chip">row-level security</span>
+          <span className="sec-chip">per-tenant HKDF keys</span>
+          <span className="sec-chip">tenant filter on every query</span>
+        </div>
+      </div>
+    </>
+  );
+}
+
 export default function App() {
   const [title, setTitle] = useState('');
   const [pitch, setPitch] = useState('');
+  const [founderName, setFounderName] = useState('');
+  const [founderEmail, setFounderEmail] = useState('');
+  const [founderCompany, setFounderCompany] = useState('');
   const [report, setReport] = useState<Report | null>(null);
   const [history, setHistory] = useState<Report[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [changes, setChanges] = useState<string[] | null>(null);
-  const [view, setView] = useState<'report' | 'build'>('report');
+  const [view, setView] = useState<'report' | 'build' | 'how'>('report');
+  const [landingHow, setLandingHow] = useState(false);
   const [editingPitch, setEditingPitch] = useState(false);
   const [fingerprint, setFingerprint] = useState<string | null>(null);
 
@@ -447,7 +524,23 @@ export default function App() {
 
   if (!report) {
     return (
-      <Shell>
+      <Shell
+        tabs={
+          <>
+            <button className={!landingHow ? 'active' : ''} onClick={() => setLandingHow(false)}>
+              Your idea
+            </button>
+            <button className={landingHow ? 'active' : ''} onClick={() => setLandingHow(true)}>
+              How it works
+              <span className="tab-dot" aria-hidden="true" />
+            </button>
+          </>
+        }
+      >
+        {landingHow ? (
+          <HowItWorks />
+        ) : (
+        <>
         <section className="hero">
           <p className="eyebrow">forklaunch / gtm-validator</p>
           <h2>
@@ -481,20 +574,62 @@ export default function App() {
             onChange={(e) => setPitch(e.target.value)}
             placeholder="What's the problem, who has it, what do you build, who pays? Two or three honest paragraphs beat a polished deck."
           />
+          <div className="founder-row">
+            <div>
+              <label>You</label>
+              <input
+                value={founderName}
+                onChange={(e) => setFounderName(e.target.value)}
+                placeholder="Jane Chen"
+              />
+            </div>
+            <div>
+              <label>Email · report link + follow-ups</label>
+              <input
+                value={founderEmail}
+                onChange={(e) => setFounderEmail(e.target.value)}
+                placeholder="jane@company.com"
+              />
+            </div>
+            <div>
+              <label>Company · optional</label>
+              <input
+                value={founderCompany}
+                onChange={(e) => setFounderCompany(e.target.value)}
+                placeholder="stealth"
+              />
+            </div>
+          </div>
           {error && <div className="error">{error}</div>}
           <button
             className="primary"
-            disabled={!title || !pitch || !!busy}
+            disabled={!title || !pitch || !founderName || !founderEmail || !!busy}
             onClick={() =>
               void run('analyze', async () => {
                 setFingerprint(await sha256Hex(`${title}\n${pitch}`));
-                pushReport(await analyzeIdea({ title, pitch }));
+                pushReport(
+                  await analyzeIdea({
+                    title,
+                    pitch,
+                    founder: {
+                      name: founderName,
+                      email: founderEmail,
+                      company: founderCompany || undefined
+                    }
+                  })
+                );
               })
             }
           >
             Run the gauntlet
           </button>
+          <p className="meta" style={{ marginTop: '0.8rem' }}>
+            Your name, email, and pitch are encrypted (AES-256-GCM) before
+            they're stored.
+          </p>
         </div>
+        </>
+        )}
       </Shell>
     );
   }
@@ -512,6 +647,9 @@ export default function App() {
             Build it on ForkLaunch
             <span className="tab-dot" aria-hidden="true" />
           </button>
+          <button className={view === 'how' ? 'active' : ''} onClick={() => setView('how')}>
+            How it works
+          </button>
         </>
       }
     >
@@ -522,6 +660,8 @@ export default function App() {
           fingerprint={fingerprint ?? undefined}
         />
       )}
+
+      {!busy && view === 'how' && <HowItWorks />}
 
       {!busy && view === 'report' && (
         <>

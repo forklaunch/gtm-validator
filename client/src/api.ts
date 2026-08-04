@@ -78,8 +78,11 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
   return res.json();
 }
 
-export const analyzeIdea = (data: { title: string; pitch: string }) =>
-  post<Report>('/gtm/ideas', data);
+export const analyzeIdea = (data: {
+  title: string;
+  pitch: string;
+  founder: { name: string; email: string; company?: string };
+}) => post<Report>('/gtm/ideas', data);
 
 export const reanalyzeIdea = (
   ideaId: string,

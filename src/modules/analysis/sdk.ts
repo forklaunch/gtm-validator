@@ -14,7 +14,8 @@ import {
   getIdeaReports,
   reanalyzeIdea,
   refineIdea,
-  generateBlueprint
+  generateBlueprint,
+  getFunnel
 } from "./api/controllers";
 
 //! defines the sdk type for deep linking with types
@@ -30,6 +31,7 @@ export type AnalysisSdk = {
     reanalyzeIdea: typeof reanalyzeIdea;
     refineIdea: typeof refineIdea;
     generateBlueprint: typeof generateBlueprint;
+    getFunnel: typeof getFunnel;
   };
 };
 
@@ -45,7 +47,8 @@ export const analysisSdkClient = {
     getIdeaReports,
     reanalyzeIdea,
     refineIdea,
-    generateBlueprint
+    generateBlueprint,
+    getFunnel
   }
 } satisfies AnalysisSdk;
 
