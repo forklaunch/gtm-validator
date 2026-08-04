@@ -17,6 +17,17 @@ function scoreClass(score: number): string {
   return 'low';
 }
 
+/** Real client-side SHA-256 — the idea is fingerprinted before it leaves the browser. */
+async function sha256Hex(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(text)
+  );
+  return [...new Uint8Array(digest)]
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
 const VERDICT_COPY: Record<string, string> = {
   strong: 'Strong — go build it',
   promising: 'Promising — sharpen and go',
@@ -24,33 +35,72 @@ const VERDICT_COPY: Record<string, string> = {
   weak: 'Weak — rethink the wedge'
 };
 
-const ANALYSIS_STAGES = [
-  'Generating research queries…',
-  'Pulling community signals from Reddit, Hacker News, and GitHub…',
-  'Scoring market pull, differentiation, timing, distribution, monetization…',
-  'Running the adversarial pass — trying to kill your idea…',
-  'Writing the viability verdict…'
+/* ── Terminal-style progress ─────────────────────────── */
+
+const ANALYSIS_LINES = [
+  'connection established → analysis service',
+  'computing SHA-256 idea fingerprint (local)',
+  'generating research queries',
+  'querying Hacker News · GitHub · Reddit',
+  'scoring five GTM lenses',
+  'adversarial pass — attempting to kill the idea',
+  'compiling verdict'
 ];
 
-function StagedProgress({ label }: { label: string }) {
-  const [stage, setStage] = useState(0);
+const BLUEPRINT_LINES = [
+  'connection established → analysis service',
+  'loading viability report',
+  'decomposing MVP into ForkLaunch modules',
+  'rendering system diagram',
+  'generating scaffold commands (CLI v1.4)',
+  'writing build prompt + ship runbook'
+];
+
+function TerminalProgress({
+  label,
+  lines,
+  fingerprint
+}: {
+  label: string;
+  lines: string[];
+  fingerprint?: string;
+}) {
+  const [step, setStep] = useState(0);
+  const start = useRef(Date.now());
   useEffect(() => {
     const id = setInterval(
-      () => setStage((s) => Math.min(s + 1, ANALYSIS_STAGES.length - 1)),
-      9000
+      () => setStep((s) => Math.min(s + 1, lines.length - 1)),
+      8000
     );
     return () => clearInterval(id);
-  }, []);
+  }, [lines.length]);
+  const ts = (i: number) =>
+    `${String(Math.floor((Math.min(i, step) * 8 + (Date.now() - start.current) / 8000) / 60)).padStart(2, '0')}:${String(Math.round(Math.min(i * 8, (Date.now() - start.current) / 1000)) % 60).padStart(2, '0')}`;
   return (
-    <div className="card progress-card">
+    <div className="card">
       <h2>{label}</h2>
-      <div className="progress-track">
-        <div className="progress-glow" />
+      <div className="term" aria-live="polite">
+        {lines.slice(0, step + 1).map((l, i) => (
+          <div key={i} className={`term-line ${i < step ? 'done' : 'active'}`}>
+            <span className="t">{ts(i)}</span>
+            <span className="marker">{i < step ? '✓' : '▸'}</span>
+            <span>
+              {l}
+              {l.includes('fingerprint') && fingerprint && (
+                <span className="term-fp"> {fingerprint.slice(0, 16)}…</span>
+              )}
+            </span>
+          </div>
+        ))}
       </div>
-      <p className="meta">{ANALYSIS_STAGES[stage]}</p>
+      <p className="meta" style={{ marginTop: '0.8rem' }}>
+        Real research, not vibes — this takes about a minute.
+      </p>
     </div>
   );
 }
+
+/* ── Mermaid + copy helpers ──────────────────────────── */
 
 function Mermaid({ chart }: { chart: string }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -84,12 +134,263 @@ function CopyBlock({ text, label }: { text: string; label?: string }) {
           setTimeout(() => setCopied(false), 1400);
         }}
       >
-        {copied ? '✓ Copied' : (label ?? 'Copy')}
+        {copied ? '✓ copied' : (label ?? 'copy')}
       </button>
       <pre>{text}</pre>
     </div>
   );
 }
+
+/* ── Enterprise readiness Q&A ─────────────────────────── */
+
+interface ReadinessQuestion {
+  id: string;
+  category: string;
+  question: string;
+  detail: string;
+  weight: number;
+  remediation: string;
+}
+
+const READINESS_QUESTIONS: ReadinessQuestion[] = [
+  {
+    id: 'sso',
+    category: 'Identity',
+    question: 'Will you support SSO (SAML / OIDC) at launch?',
+    detail: 'Enterprise buyers routinely disqualify vendors without SSO in security review.',
+    weight: 15,
+    remediation: 'ForkLaunch iam-better-auth ships OIDC/social/SSO flows out of the box — add it with `forklaunch init module iam --module iam-better-auth`.'
+  },
+  {
+    id: 'rbac',
+    category: 'Identity',
+    question: 'Do you have role-based access control with least-privilege roles?',
+    detail: 'Admins, editors, viewers — and the ability to prove who can do what.',
+    weight: 10,
+    remediation: 'ForkLaunch handlers take allowedRoles/allowedPermissions per route; role surfacing comes from the IAM module.'
+  },
+  {
+    id: 'audit',
+    category: 'Data protection',
+    question: 'Is every data access audit-logged?',
+    detail: 'Security teams ask for access trails during procurement, and regulators after incidents.',
+    weight: 12,
+    remediation: 'ForkLaunch request telemetry logs every call with correlation ids; compliance entities record retention events.'
+  },
+  {
+    id: 'encryption',
+    category: 'Data protection',
+    question: 'Is sensitive data encrypted at rest with managed keys?',
+    detail: 'Field-level encryption, not just disk encryption, for PII and secrets.',
+    weight: 15,
+    remediation: 'ForkLaunch compliance entities encrypt classified fields (AES-256-GCM, per-tenant HKDF keys) before they reach Postgres.'
+  },
+  {
+    id: 'tenancy',
+    category: 'Data protection',
+    question: 'Are customer tenants isolated at the data layer?',
+    detail: 'Row-level isolation with per-tenant keys, provable in a security review.',
+    weight: 12,
+    remediation: 'ForkLaunch tenant filters + Postgres RLS scope every query; encryption keys derive per tenant.'
+  },
+  {
+    id: 'compliance',
+    category: 'Compliance',
+    question: 'Can you map your controls to SOC 2 / HIPAA / GDPR today?',
+    detail: 'A controls matrix reviewers can walk through, even pre-certification.',
+    weight: 12,
+    remediation: 'ForkLaunch compliance tooling (classification, retention, erasure/export endpoints) gives you the technical controls to map.'
+  },
+  {
+    id: 'retention',
+    category: 'Compliance',
+    question: 'Do you enforce data retention and deletion automatically?',
+    detail: 'GDPR erasure and retention schedules enforced by software, not calendars.',
+    weight: 9,
+    remediation: 'defineComplianceEntity retention policies anonymize/delete on schedule; eraseUserData/exportUserData routes come scaffolded.'
+  },
+  {
+    id: 'sla',
+    category: 'Operations',
+    question: 'Can you commit to an SLA with incident response?',
+    detail: 'Uptime targets, on-call, a status page, and a post-incident process.',
+    weight: 8,
+    remediation: 'Deploy on the ForkLaunch platform with OpenTelemetry metrics/traces wired; releases and rollbacks are one command.'
+  },
+  {
+    id: 'residency',
+    category: 'Operations',
+    question: 'Can customers pin data to a region?',
+    detail: 'EU customers will ask. US healthcare will ask. Plan the answer now.',
+    weight: 7,
+    remediation: 'ForkLaunch environments are per-region; deploy the same release to multiple regions with per-region config.'
+  }
+];
+
+type ReadinessAnswer = 'yes' | 'partial' | 'no';
+const ANSWER_POINTS: Record<ReadinessAnswer, number> = { yes: 1, partial: 0.45, no: 0 };
+const ANSWER_LABELS: Record<ReadinessAnswer, string> = {
+  yes: 'Yes, at launch',
+  partial: 'Partially / planned',
+  no: 'Not yet'
+};
+
+function EnterpriseReadiness() {
+  const [answers, setAnswers] = useState<Record<string, ReadinessAnswer>>({});
+  const [started, setStarted] = useState(false);
+  const idx = READINESS_QUESTIONS.findIndex((q) => !(q.id in answers));
+  const complete = idx === -1;
+
+  if (!started) {
+    return (
+      <div className="card">
+        <h2>
+          4 · Prove it to enterprise buyers
+          <span className="badge gold">readiness scoring</span>
+        </h2>
+        <p>
+          Nine questions security reviewers will ask in your first enterprise
+          deal. Answer honestly — every gap comes back with the ForkLaunch
+          feature that closes it.
+        </p>
+        <button className="primary" onClick={() => setStarted(true)}>
+          Score enterprise readiness
+        </button>
+      </div>
+    );
+  }
+
+  if (!complete) {
+    const q = READINESS_QUESTIONS[idx];
+    return (
+      <div className="card">
+        <h2>
+          Enterprise readiness
+          <span className="badge">{idx + 1} / {READINESS_QUESTIONS.length}</span>
+          <span className="badge gold">{q.category}</span>
+        </h2>
+        <div className="score-bar" style={{ margin: '0.6rem 0 1.1rem' }}>
+          <div
+            className="score-bar-fill high"
+            style={{ width: `${(idx / READINESS_QUESTIONS.length) * 100}%` }}
+          />
+        </div>
+        <h3 style={{ fontSize: '1.15rem', margin: '0 0 0.4rem' }}>{q.question}</h3>
+        <p className="meta" style={{ marginTop: 0 }}>{q.detail}</p>
+        <div className="btn-row">
+          {(Object.keys(ANSWER_LABELS) as ReadinessAnswer[]).map((a) => (
+            <button
+              key={a}
+              className={a === 'yes' ? 'primary' : 'secondary'}
+              onClick={() => setAnswers((prev) => ({ ...prev, [q.id]: a }))}
+            >
+              {ANSWER_LABELS[a]}
+            </button>
+          ))}
+        </div>
+        {idx > 0 && (
+          <p className="meta" style={{ marginTop: '1rem' }}>
+            <a
+              href="#back"
+              onClick={(e) => {
+                e.preventDefault();
+                const prevQ = READINESS_QUESTIONS[idx - 1];
+                setAnswers((prev) => {
+                  const next = { ...prev };
+                  delete next[prevQ.id];
+                  return next;
+                });
+              }}
+            >
+              ← back
+            </a>
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  const totalWeight = READINESS_QUESTIONS.reduce((s, q) => s + q.weight, 0);
+  const score = Math.round(
+    (READINESS_QUESTIONS.reduce(
+      (s, q) => s + q.weight * ANSWER_POINTS[answers[q.id]],
+      0
+    ) /
+      totalWeight) *
+      100
+  );
+  const grade =
+    score >= 85
+      ? 'Enterprise-ready'
+      : score >= 65
+        ? 'Nearly there'
+        : score >= 45
+          ? 'Mid-market ready'
+          : 'Not yet';
+  const categories = [...new Set(READINESS_QUESTIONS.map((q) => q.category))].map(
+    (cat) => {
+      const qs = READINESS_QUESTIONS.filter((q) => q.category === cat);
+      const w = qs.reduce((s, q) => s + q.weight, 0);
+      const pts = qs.reduce((s, q) => s + q.weight * ANSWER_POINTS[answers[q.id]], 0);
+      return { cat, pct: Math.round((pts / w) * 100) };
+    }
+  );
+  const gaps = READINESS_QUESTIONS.filter((q) => answers[q.id] !== 'yes');
+
+  return (
+    <div className="card">
+      <h2>
+        Enterprise readiness
+        <span className={`badge ${score >= 65 ? 'ok' : 'warn'}`}>{grade}</span>
+      </h2>
+      <div className="verdict-row" style={{ marginBottom: '1rem' }}>
+        <div
+          className={`viability-ring ${scoreClass(score)}`}
+          style={{ ['--pct' as string]: score }}
+        >
+          <span className="viability-score">{score}</span>
+          <span className="viability-denominator">/100</span>
+        </div>
+        <div style={{ flex: 1, minWidth: 240 }}>
+          {categories.map((c) => (
+            <div key={c.cat} style={{ marginBottom: '0.55rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span className="meta">{c.cat}</span>
+                <span className="meta" style={{ fontFamily: 'var(--mono)' }}>{c.pct}%</span>
+              </div>
+              <div className="score-bar">
+                <div className={`score-bar-fill ${scoreClass(c.pct)}`} style={{ width: `${c.pct}%` }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      {gaps.length > 0 ? (
+        <>
+          <h3>Close the gaps</h3>
+          {gaps.map((q) => (
+            <div className="bear-item" key={q.id}>
+              <div className="bear-claim">
+                <span className={`severity ${answers[q.id] === 'no' ? 'sev-4' : 'sev-2'}`}>
+                  {answers[q.id] === 'no' ? 'GAP' : 'PARTIAL'}
+                </span>
+                <strong>{q.question}</strong>
+              </div>
+              <p className="bear-counter">{q.remediation}</p>
+            </div>
+          ))}
+        </>
+      ) : (
+        <p className="notice">Clean sweep — bring on the security review.</p>
+      )}
+      <button className="secondary" onClick={() => setAnswers({})}>
+        Re-run assessment
+      </button>
+    </div>
+  );
+}
+
+/* ── Main app ─────────────────────────────────────────── */
 
 const SOURCE_LABELS: Record<string, string> = {
   reddit: 'Reddit',
@@ -108,6 +409,7 @@ export default function App() {
   const [changes, setChanges] = useState<string[] | null>(null);
   const [view, setView] = useState<'report' | 'build'>('report');
   const [editingPitch, setEditingPitch] = useState(false);
+  const [fingerprint, setFingerprint] = useState<string | null>(null);
 
   const prev = history.length > 1 ? history[1] : null;
 
@@ -128,12 +430,17 @@ export default function App() {
     setHistory((h) => [r, ...h]);
     setTitle(r.title);
     setPitch(r.pitch);
+    void sha256Hex(`${r.title}\n${r.pitch}`).then(setFingerprint);
   };
 
   if (busy && !report) {
     return (
       <Shell>
-        <StagedProgress label={`Pressure-testing “${title}”`} />
+        <TerminalProgress
+          label={`Pressure-testing “${title}”`}
+          lines={ANALYSIS_LINES}
+          fingerprint={fingerprint ?? undefined}
+        />
       </Shell>
     );
   }
@@ -142,7 +449,7 @@ export default function App() {
     return (
       <Shell>
         <section className="hero">
-          <p className="eyebrow">ForkLaunch · GTM Validator</p>
+          <p className="eyebrow">forklaunch / gtm-validator</p>
           <h2>
             Pressure-test your startup idea <em>before</em> you build it.
           </h2>
@@ -152,6 +459,11 @@ export default function App() {
             idea. Survive it, and we hand you the architecture and the exact
             commands to build it on ForkLaunch.
           </p>
+          <div className="sec-strip">
+            <span className="sec-chip">SHA-256 fingerprinted in your browser</span>
+            <span className="sec-chip">stored in your database, not ours</span>
+            <span className="sec-chip">never used to train models</span>
+          </div>
         </section>
         <div className="card">
           <h2>Your idea</h2>
@@ -175,15 +487,13 @@ export default function App() {
             disabled={!title || !pitch || !!busy}
             onClick={() =>
               void run('analyze', async () => {
+                setFingerprint(await sha256Hex(`${title}\n${pitch}`));
                 pushReport(await analyzeIdea({ title, pitch }));
               })
             }
           >
             Run the gauntlet
           </button>
-          <p className="meta" style={{ marginTop: '0.8rem' }}>
-            Analysis takes about a minute — real research, not vibes.
-          </p>
         </div>
       </Shell>
     );
@@ -205,17 +515,26 @@ export default function App() {
         </>
       }
     >
-      {busy && <StagedProgress label={busy === 'blueprint' ? 'Designing your ForkLaunch architecture…' : `Re-analyzing “${title}”`} />}
+      {busy && (
+        <TerminalProgress
+          label={busy === 'blueprint' ? 'Designing your ForkLaunch architecture' : `Re-analyzing “${title}”`}
+          lines={busy === 'blueprint' ? BLUEPRINT_LINES : ANALYSIS_LINES}
+          fingerprint={fingerprint ?? undefined}
+        />
+      )}
 
       {!busy && view === 'report' && (
         <>
           <div className="card verdict-card">
             <div className="verdict-row">
-              <div className={`viability-ring ${verdictClass}`}>
+              <div
+                className={`viability-ring ${verdictClass}`}
+                style={{ ['--pct' as string]: report.viabilityScore }}
+              >
                 <span className="viability-score">{report.viabilityScore}</span>
                 <span className="viability-denominator">/100</span>
               </div>
-              <div>
+              <div style={{ flex: 1, minWidth: 260 }}>
                 <h2 style={{ marginBottom: '0.3rem' }}>
                   {report.title}
                   <span className="badge gold">v{report.version}</span>
@@ -228,11 +547,16 @@ export default function App() {
                   {prev && prev.viabilityScore !== report.viabilityScore && (
                     <span className={`delta ${report.viabilityScore > prev.viabilityScore ? 'up' : 'down'}`}>
                       {report.viabilityScore > prev.viabilityScore ? '▲' : '▼'}{' '}
-                      {report.viabilityScore - prev.viabilityScore}
+                      {Math.abs(report.viabilityScore - prev.viabilityScore)}
                     </span>
                   )}
                 </p>
                 <p style={{ margin: 0 }}>{report.summary}</p>
+                {fingerprint && (
+                  <p className="fingerprint">
+                    idea fingerprint <code>{fingerprint.slice(0, 20)}…{fingerprint.slice(-6)}</code> · SHA-256, computed in your browser
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -280,7 +604,7 @@ export default function App() {
                     disabled={!!busy}
                     onClick={() =>
                       void run('refine', async () => {
-                        const out = await refineIdea(report.ideaId, dim.key, [
+                        const out = await refineIdea(report.ideaId, dim.key as GtmFocus, [
                           dim.summary,
                           ...dim.actionableFeedback
                         ]);
@@ -307,10 +631,10 @@ export default function App() {
             {report.bearCase.map((b, i) => (
               <div className="bear-item" key={i}>
                 <div className="bear-claim">
-                  <span className={`severity sev-${b.severity}`}>{'⚠'.repeat(Math.max(1, Math.min(5, b.severity)))}</span>
+                  <span className={`severity sev-${b.severity}`}>SEV-{b.severity}</span>
                   <strong>{b.claim}</strong>
                 </div>
-                {b.counterplay && <p className="bear-counter">Counterplay: {b.counterplay}</p>}
+                {b.counterplay && <p className="bear-counter">↳ counterplay: {b.counterplay}</p>}
               </div>
             ))}
           </div>
@@ -436,12 +760,12 @@ export default function App() {
               <div className="card">
                 <h2>1 · Scaffold it</h2>
                 <p className="meta" style={{ marginTop: 0 }}>ForkLaunch CLI v1.4 — every flag supplied, no interactive prompts.</p>
-                <CopyBlock text={report.blueprint.scaffoldCommands.join('\n')} label="Copy all" />
+                <CopyBlock text={report.blueprint.scaffoldCommands.join('\n')} label="copy all" />
               </div>
               <div className="card">
                 <h2>2 · Build it</h2>
                 <p className="meta" style={{ marginTop: 0 }}>Paste into your AI coding agent from the scaffolded repo root.</p>
-                <CopyBlock text={report.blueprint.buildPrompt} label="Copy prompt" />
+                <CopyBlock text={report.blueprint.buildPrompt} label="copy prompt" />
               </div>
               <div className="card">
                 <h2>3 · Ship it</h2>
@@ -454,6 +778,7 @@ export default function App() {
                   ))}
                 </ol>
               </div>
+              <EnterpriseReadiness />
             </>
           )}
         </>
@@ -473,12 +798,9 @@ function Shell({
     <div className="portal-root">
       <header className="masthead">
         <div className="shell">
-          <p className="eyebrow">ForkLaunch</p>
-          <h1>GTM Validator</h1>
-          <p>
-            Idea in. Evidence-backed verdict out. Then the exact plan to build
-            it.
-          </p>
+          <p className="eyebrow">forklaunch</p>
+          <h1>gtm-validator</h1>
+          <p>idea in · evidence out · then the exact plan to build it</p>
         </div>
       </header>
       {tabs && (
