@@ -1,0 +1,29 @@
+{
+  "name": "@gtm-validator/monitoring",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Monitoring library for gtm-validator, defining metrics, logs, and trace building blocks",
+  "keywords": [],
+  "license": "MIT",
+  "author": "Rohin Bhargava",
+  "types": "index.d.ts",
+  "scripts": {
+    "build": "tsgo -b",
+    "clean": "rm -rf dist lib pnpm.lock.yaml tsconfig.tsbuildinfo node_modules",
+    "docs": "typedoc --out docs *",
+    "format": "biome format --write .",
+    "lint": "oxlint --config .oxlint.config.json",
+    "lint:fix": "oxlint --fix --config .oxlint.config.json",
+    "test": "pnpm vitest --passWithNoTests"
+  },
+  "dependencies": {
+    "@forklaunch/core": "~1.5.6"
+  },
+  "devDependencies": {},
+  "mikro-orm": {
+    "manifest_paths": [
+      "./mikro-orm.config.ts",
+      "./dist/mikro-orm.config.js"
+    ]
+  }
+}

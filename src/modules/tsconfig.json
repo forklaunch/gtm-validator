@@ -1,0 +1,16 @@
+{
+  "files": [],
+  "declaration": true,
+  "declarationMap": true,
+  "references": [
+    {
+      "path": "core"
+    },
+    {
+      "path": "monitoring"
+    },
+    {
+      "path": "analysis"
+    }
+  ]
+}

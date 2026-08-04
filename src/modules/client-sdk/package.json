@@ -1,0 +1,34 @@
+{
+  "name": "@gtm-validator/client-sdk",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Client SDK for gtm-validator, containing shared foundational infrastrucuture and utilities",
+  "keywords": [],
+  "license": "MIT",
+  "author": "Rohin Bhargava",
+  "scripts": {
+    "build": "tsgo -b",
+    "clean": "rm -rf dist lib pnpm.lock.yaml tsconfig.tsbuildinfo node_modules",
+    "docs": "typedoc --out docs *",
+    "format": "biome format --write .",
+    "lint": "oxlint --config .oxlint.config.json",
+    "lint:fix": "oxlint --fix --config .oxlint.config.json",
+    "test": "pnpm vitest --passWithNoTests"
+  },
+  "dependencies": {
+    "@forklaunch/common": "~1.2.20",
+    "@forklaunch/core": "~1.5.6",
+    "@forklaunch/universal-sdk": "~1.2.20",
+    "@types/express": "^5.0.6",
+    "@types/qs": "^6.15.1"
+  },
+  "devDependencies": {
+    "@gtm-validator/analysis": "workspace:*"
+  },
+  "mikro-orm": {
+    "manifest_paths": [
+      "./mikro-orm.config.ts",
+      "./dist/mikro-orm.config.js"
+    ]
+  }
+}

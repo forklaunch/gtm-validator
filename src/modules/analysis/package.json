@@ -1,0 +1,68 @@
+{
+  "name": "@gtm-validator/analysis",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Startup idea GTM analysis, real-world signals, adversarial review, and build blueprints",
+  "keywords": [],
+  "license": "MIT",
+  "author": "Rohin Bhargava",
+  "scripts": {
+    "build": "tsgo -b",
+    "clean": "rm -rf dist lib pnpm.lock.yaml tsconfig.tsbuildinfo node_modules",
+    "dev": "pnpm migrate:up && pnpm tsx watch server.ts",
+    "dev:local": "DOTENV_FILE_PATH=.env.local pnpm migrate:up && DOTENV_FILE_PATH=.env.local pnpm tsx watch server.ts",
+    "docs": "typedoc --out docs *",
+    "format": "biome format --write .",
+    "lint": "oxlint --config .oxlint.config.json",
+    "lint:fix": "oxlint --fix --config .oxlint.config.json",
+    "migrate:create": "[ -z $DOTENV_FILE_PATH ] && export DOTENV_FILE_PATH=.env.local; NODE_OPTIONS='--import=tsx' mikro-orm migration:create",
+    "migrate:down": "[ -z $DOTENV_FILE_PATH ] && export DOTENV_FILE_PATH=.env.local; NODE_OPTIONS='--import=tsx' mikro-orm migration:down",
+    "migrate:init": "if [ ! -f migrations/Migration* ]; then [ -z $DOTENV_FILE_PATH ] && export DOTENV_FILE_PATH=.env.local; NODE_OPTIONS='--import=tsx' mikro-orm migration:create --initial; fi",
+    "migrate:up": "[ -z $DOTENV_FILE_PATH ] && export DOTENV_FILE_PATH=.env.local; NODE_OPTIONS='--import=tsx' mikro-orm migration:up",
+    "seed": "[ -z $DOTENV_FILE_PATH ] && export DOTENV_FILE_PATH=.env.local; NODE_OPTIONS='--import=tsx' mikro-orm seeder:run",
+    "start": "[ -f .env.prod ] && export DOTENV_FILE_PATH=.env.prod; pnpm migrate:up && [ -f .env.prod ] && export DOTENV_FILE_PATH=.env.prod; node --import=tsx dist/server.js",
+    "start:server": "[ -f .env.prod ] && export DOTENV_FILE_PATH=.env.prod; pnpm migrate:up && [ -f .env.prod ] && export DOTENV_FILE_PATH=.env.prod; node --import=tsx dist/server.js",
+    "test": "pnpm vitest --passWithNoTests",
+    "retention:enforce": "pnpm tsx scripts/enforce-retention.ts"
+  },
+  "dependencies": {
+    "@gtm-validator/core": "workspace:*",
+    "@gtm-validator/monitoring": "workspace:*",
+    "@forklaunch/common": "~1.2.20",
+    "@forklaunch/core": "~1.5.6",
+    "@forklaunch/express": "~1.2.34",
+    "@forklaunch/internal": "~1.2.22",
+    "@forklaunch/universal-sdk": "~1.2.20",
+    "@forklaunch/validator": "~1.2.20",
+    "@mikro-orm/core": "7.1.8",
+    "@mikro-orm/migrations": "7.1.8",
+    "@mikro-orm/postgresql": "7.1.8",
+    "@mikro-orm/seeder": "7.1.8",
+    "@types/express": "^5.0.6",
+    "@types/express-serve-static-core": "^5.1.2",
+    "@types/qs": "^6.15.1",
+    "ajv": "^8.20.0",
+    "dotenv": "^17.4.2",
+    "uuid": "^14.0.1",
+    "zod": "^4.4.3",
+    "pino": "^10.3.1",
+    "ioredis": "^5.11.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "1.9.4",
+    "@forklaunch/testing": "~1.2.21",
+    "@mikro-orm/cli": "7.1.8",
+    "@types/jest": "^30.0.0",
+    "@types/uuid": "^11.0.0",
+    "oxlint": "^0.16.6",
+    "tsx": "^4.23.1",
+    "typedoc": "^0.28.20",
+    "typescript-eslint": "^8.65.0"
+  },
+  "mikro-orm": {
+    "manifest_paths": [
+      "./mikro-orm.config.ts",
+      "./dist/mikro-orm.config.js"
+    ]
+  }
+}
