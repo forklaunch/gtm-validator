@@ -18,3 +18,8 @@ allowBuilds:
   ssh2: true
   tldjs: true
   unrs-resolver: true
+
+# pnpm 11 (platform CodeBuild) refuses dependency build scripts even with
+# onlyBuiltDependencies above; allow builds workspace-wide in CI. Stricter
+# alternative: pin pnpm@10 in the build image.
+dangerouslyAllowAllBuilds: true
