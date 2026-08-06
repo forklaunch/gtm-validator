@@ -40,18 +40,5 @@
     "vitest": "^4.1.10",
     "@typescript/native-preview": "7.0.0-dev.20260707.2",
     "ts-node": "^10.9.2"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@biomejs/biome",
-      "cpu-features",
-      "esbuild",
-      "protobufjs",
-      "ssh2"
-    ],
-    "ignoredBuiltDependencies": [
-      "@scarf/scarf",
-      "tldjs"
-    ]
   }
 }
