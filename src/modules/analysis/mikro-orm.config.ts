@@ -17,6 +17,20 @@ import * as entities from './persistence/entities';
 //! Load the environment variables
 dotenv.config({ path: getEnvVar('DOTENV_FILE_PATH') });
 
+//! Platform deployments inject a consolidated DB_URL (via ECS secrets)
+//! instead of the discrete DB_* vars local dev uses — parse it so both
+//! contracts work.
+const dbUrl = process.env.DB_URL;
+if (dbUrl) {
+  const parsed = new URL(dbUrl);
+  process.env.DB_HOST ??= parsed.hostname;
+  process.env.DB_PORT ??= parsed.port || '5432';
+  process.env.DB_USER ??= decodeURIComponent(parsed.username);
+  process.env.DB_PASSWORD ??= decodeURIComponent(parsed.password);
+  const pathDb = parsed.pathname.replace(/^\//, '');
+  if (pathDb) process.env.DB_NAME ??= pathDb;
+}
+
 //! Create the config injector
 const configInjector = createConfigInjector(
   SchemaValidator(),

@@ -44,17 +44,17 @@ const environmentConfig = configInjector.chain({
   PROTOCOL: {
     lifetime: Lifetime.Singleton,
     type: string,
-    value: getEnvVar("PROTOCOL"),
+    value: getEnvVar("PROTOCOL") ?? "http",
   },
   HOST: {
     lifetime: Lifetime.Singleton,
     type: string,
-    value: getEnvVar("HOST"),
+    value: getEnvVar("HOST") ?? "0.0.0.0",
   },
   PORT: {
     lifetime: Lifetime.Singleton,
     type: number,
-    value: Number(getEnvVar("PORT")),
+    value: Number(getEnvVar("PORT") ?? "8000"),
   },
   VERSION: {
     lifetime: Lifetime.Singleton,
