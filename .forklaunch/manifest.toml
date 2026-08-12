@@ -1,5 +1,5 @@
 id = "ee23c774-6258-4f85-8c12-af849f52dab0"
-cli_version = "1.4.0"
+cli_version = "1.4.7"
 app_name = "gtm-validator"
 modules_path = "src/modules"
 app_description = "GTM validator: startup idea analysis with real-world signals, adversarial review, and ForkLaunch build blueprints"
