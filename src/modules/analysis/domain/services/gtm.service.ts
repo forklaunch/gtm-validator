@@ -347,9 +347,9 @@ export class GtmService {
     version: number
   ): Promise<ReportPayload> => {
     const queries = await this.searchQueries(idea);
-    const signals = await this.signals.gather(
-      queries,
-      `${idea.title} ${idea.pitch}`
+    const signals = await this.curateSignals(
+      await this.signals.gather(queries, `${idea.title} ${idea.pitch}`),
+      idea
     );
 
     let analysis: {
@@ -459,6 +459,68 @@ export class GtmService {
       `${core} software`,
       `${core} alternatives`
     ];
+  };
+
+  /**
+   * Judge which trawled items are actually about this idea. Keyword search
+   * across seven sources returns confident nonsense — npm answers "vets hate
+   * charting" with `@department-of-veterans-affairs/generator-vets-website`,
+   * Google News with "Will My Cat Hate Me After the Vet?" — and no keyword
+   * heuristic separates those from real hits reliably. One cheap model call
+   * does. Without a model configured the keyword prefilter stands alone.
+   */
+  private curateSignals = async (
+    signals: SourceSignals[],
+    idea: StartupIdea
+  ): Promise<SourceSignals[]> => {
+    const candidates = signals.flatMap((s) =>
+      s.items.map((item) => ({ source: s.source, item }))
+    );
+    if (!this.foundry.isConfigured() || candidates.length === 0) return signals;
+
+    try {
+      const listing = candidates
+        .map(
+          (c, i) => `${i}. [${c.source}] ${c.item.title}${c.item.context ? ` (${c.item.context})` : ''}`
+        )
+        .join('\n');
+      const out = await this.foundry.completeJson<{ keep?: number[] }>(
+        `You are filtering search results for a go-to-market analysis. Given a startup idea and a numbered list of items found by keyword search, return the indices of items that are genuinely about the idea's problem space, its market/industry, its customers, or competing/adjacent products.
+
+Drop anything that merely shares a word: unrelated news, off-topic forum threads, packages or repositories that matched a substring, generic technical questions with no bearing on this idea. Being ruthless is correct — a misleading signal is worse than a missing one. Keep an item when it is plausibly evidence about demand, pain, competition, or market context.
+
+Respond ONLY with JSON: {"keep": [0, 3, 7]}`,
+        `Idea: ${idea.title}\n\n${idea.pitch.slice(0, 700)}\n\nItems:\n${listing}`,
+        1500
+      );
+      const keep = new Set(
+        (out.keep ?? []).filter((n) => Number.isInteger(n) && n >= 0)
+      );
+      if (keep.size === 0) return signals;
+
+      const kept = new Set(
+        candidates
+          .filter((_, i) => keep.has(i))
+          .map((c) => c.item.url || c.item.title)
+      );
+      return signals.map((s) => {
+        const items = s.items.filter((i) => kept.has(i.url || i.title));
+        return {
+          ...s,
+          items,
+          status: (items.length
+            ? 'ok'
+            : s.status === 'unavailable'
+              ? 'unavailable'
+              : 'empty') as SourceSignals['status']
+        };
+      });
+    } catch (error) {
+      this.openTelemetryCollector.info(
+        `[gtm] signal curation failed, keeping keyword-filtered set: ${(error as Error).message}`
+      );
+      return signals;
+    }
   };
 
   /** Trim signals for prompt economy: top items only, no long snippets. */

@@ -119,18 +119,15 @@ function isRelevant(
 ): boolean {
   const queryTerms = terms(query);
   if (queryTerms.length === 0) return true;
-  const haystack = terms(
-    `${item.title} ${item.snippet ?? ''} ${item.context ?? ''}`
-  );
+  // Title and context only — body text shares some word with almost any
+  // query. This is a cheap prefilter to bound how much goes to the model;
+  // GtmService.curateSignals does the actual relevance judgement.
+  const haystack = terms(`${item.title} ${item.context ?? ''}`);
   if (haystack.length === 0) return false;
-
-  const hits = overlap(queryTerms, haystack);
-  if (hits === 0) return false;
-  // Longer queries must match more of themselves; a single shared word out
-  // of five is a coincidence, not a topic.
-  const required = queryTerms.length >= 4 ? 3 : queryTerms.length >= 2 ? 2 : 1;
-  if (hits >= required) return true;
-  return ideaTerms.length > 0 && overlap(ideaTerms, haystack) >= 2;
+  return (
+    overlap(queryTerms, haystack) > 0 ||
+    (ideaTerms.length > 0 && overlap(ideaTerms, haystack) >= 2)
+  );
 }
 
 /** Reduce a query to its 2-3 most significant words for a broadened retry. */
@@ -174,20 +171,24 @@ export class SignalsService {
       .slice(0, MAX_QUERIES);
     if (trawl.length === 0) trawl.push('');
 
-    const sources: Array<[SignalSource, (q: string) => Promise<SignalItem[]>]> =
-      [
-        ['reddit', this.reddit],
-        ['hackernews', this.hackerNews],
-        ['github', this.github],
-        ['stackoverflow', this.stackOverflow],
-        ['devto', this.devTo],
-        ['npm', this.npm],
-        ['news', this.news]
-      ];
+    // `paceMs` serialises a source's queries with a delay between them.
+    // Reddit's public RSS 429s immediately on parallel bursts; everything
+    // else tolerates a concurrent fan-out.
+    const sources: Array<
+      [SignalSource, (q: string) => Promise<SignalItem[]>, number?]
+    > = [
+      ['reddit', this.reddit, 1100],
+      ['hackernews', this.hackerNews],
+      ['github', this.github],
+      ['stackoverflow', this.stackOverflow],
+      ['devto', this.devTo],
+      ['npm', this.npm],
+      ['news', this.news]
+    ];
 
     const gathered = await Promise.all(
-      sources.map(([source, fetcher]) =>
-        this.trawlSource(source, fetcher, trawl, ideaTerms)
+      sources.map(([source, fetcher, paceMs]) =>
+        this.trawlSource(source, fetcher, trawl, ideaTerms, paceMs)
       )
     );
     return [...gathered, await this.linkedin(trawl[0] ?? '')];
@@ -203,12 +204,29 @@ export class SignalsService {
     source: SignalSource,
     fetcher: (q: string) => Promise<SignalItem[]>,
     queries: string[],
-    ideaTerms: string[] = []
+    ideaTerms: string[] = [],
+    paceMs = 0
   ): Promise<SourceSignals> => {
+    const runQuery = async (q: string) =>
+      (await fetcher(q)).map((i) => ({ ...i, matchedQuery: q }));
+
     const run = async (qs: string[]) => {
-      const settled = await Promise.allSettled(
-        qs.map(async (q) => (await fetcher(q)).map((i) => ({ ...i, matchedQuery: q })))
-      );
+      let settled: PromiseSettledResult<SignalItem[]>[];
+      if (paceMs > 0) {
+        // Sequential with a gap — rate-limited sources would 429 the burst.
+        settled = [];
+        for (const [i, q] of qs.entries()) {
+          if (i > 0) await new Promise((r) => setTimeout(r, paceMs));
+          settled.push(
+            await runQuery(q).then(
+              (value) => ({ status: 'fulfilled' as const, value }),
+              (reason) => ({ status: 'rejected' as const, reason })
+            )
+          );
+        }
+      } else {
+        settled = await Promise.allSettled(qs.map(runQuery));
+      }
       const items: SignalItem[] = [];
       const seen = new Set<string>();
       let failures = 0;
@@ -277,7 +295,7 @@ export class SignalsService {
     if (source === 'reddit') {
       return this.redditClientId
         ? `Reddit search could not be reached (${error})`
-        : 'Reddit blocks unauthenticated search — set REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET (free script app) to enable';
+        : `Reddit public RSS search could not be reached (${error}) — set REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET (free script app) for the authenticated API, which also returns scores and comment counts`;
     }
     return `${source} search could not be reached (${error})`;
   };
@@ -311,9 +329,15 @@ export class SignalsService {
     return this.redditToken.value;
   };
 
+  /**
+   * OAuth when credentials exist (richer: scores and comment counts), and
+   * the public RSS search when they don't. Reddit hard-403s the JSON
+   * endpoints unauthenticated, but `search.rss` is still served — no
+   * engagement metrics, but the threads themselves are the signal.
+   */
   private reddit = async (query: string): Promise<SignalItem[]> => {
-    const token = await this.redditAuth();
-    if (!token) throw new Error('no credentials');
+    const token = await this.redditAuth().catch(() => null);
+    if (!token) return this.redditRss(query);
     const json = await fetchJson(
       `https://oauth.reddit.com/search?q=${encodeURIComponent(query)}&sort=relevance&t=year&limit=8`,
       { authorization: `Bearer ${token}` }
@@ -329,6 +353,34 @@ export class SignalsService {
         context: `r/${String(d.subreddit ?? '')}`,
         snippet: String(d.selftext ?? '').slice(0, 220) || undefined
       }));
+  };
+
+  private redditRss = async (query: string): Promise<SignalItem[]> => {
+    const xml = await fetchText(
+      `https://www.reddit.com/search.rss?q=${encodeURIComponent(query)}&sort=relevance&t=year&limit=8`
+    );
+    const entries = xml.match(/<entry>([\s\S]*?)<\/entry>/g) ?? [];
+    return entries
+      .map((raw) => {
+        const title = decodeEntities(
+          raw.match(/<title>([\s\S]*?)<\/title>/)?.[1] ?? ''
+        );
+        const url = raw.match(/<link[^>]*href="([^"]+)"/)?.[1] ?? '';
+        const sub = url.match(/reddit\.com\/r\/([^/]+)/)?.[1];
+        const body = decodeEntities(
+          raw.match(/<content[^>]*>([\s\S]*?)<\/content>/)?.[1] ?? ''
+        );
+        return {
+          title,
+          url,
+          // RSS carries no score; rank by presence, not popularity.
+          score: 0,
+          context: sub ? `r/${sub}` : 'Reddit',
+          snippet: body.slice(0, 220) || undefined
+        };
+      })
+      // Subreddit landing pages come back as bare /r/<sub>/ links.
+      .filter((i) => i.title && /\/comments\//.test(i.url));
   };
 
   /** Stories and comments: comments are where the unmet pain is stated. */
