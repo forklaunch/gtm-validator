@@ -159,7 +159,8 @@ export class SignalsService {
     private readonly openTelemetryCollector: OpenTelemetryCollector<Metrics>,
     private readonly linkedinApiToken: string,
     private readonly redditClientId: string = '',
-    private readonly redditClientSecret: string = ''
+    private readonly redditClientSecret: string = '',
+    private readonly braveApiKey: string = ''
   ) {}
 
   gather = async (
@@ -183,7 +184,10 @@ export class SignalsService {
       ['stackoverflow', this.stackOverflow],
       ['devto', this.devTo],
       ['npm', this.npm],
-      ['news', this.news]
+      ['news', this.news],
+      // Web search restricted to linkedin.com — LinkedIn has no public
+      // search API, but its public posts and company pages are indexed.
+      ['linkedin', this.linkedin, this.braveApiKey ? 0 : 1100]
     ];
 
     const gathered = await Promise.all(
@@ -191,7 +195,7 @@ export class SignalsService {
         this.trawlSource(source, fetcher, trawl, ideaTerms, paceMs)
       )
     );
-    return [...gathered, await this.linkedin(trawl[0] ?? '')];
+    return gathered;
   };
 
   /**
@@ -292,6 +296,11 @@ export class SignalsService {
   };
 
   private unavailableNote = (source: SignalSource, error: string): string => {
+    if (source === 'linkedin') {
+      return this.braveApiKey
+        ? `LinkedIn web search could not be reached (${error})`
+        : 'LinkedIn is reached via web search — the keyless engine is rate-limited and refused this batch; set BRAVE_API_KEY (free tier) for reliable results';
+    }
     if (source === 'reddit') {
       return this.redditClientId
         ? `Reddit search could not be reached (${error})`
@@ -509,13 +518,76 @@ export class SignalsService {
     });
   };
 
-  private linkedin = async (query: string): Promise<SourceSignals> => ({
-    source: 'linkedin',
-    status: 'unavailable',
-    query,
-    items: [],
-    note: this.linkedinApiToken
-      ? 'LinkedIn partner API integration not yet implemented'
-      : 'LinkedIn has no public search API — professional/market signal is covered by the news and Stack Overflow sources instead'
-  });
+  /**
+   * Web search, used to reach sources that have no API of their own.
+   * Brave's API when a key is configured; otherwise Mojeek, which serves
+   * a keyless HTML result page from its own independent index.
+   */
+  private webSearch = async (
+    query: string,
+    site?: string
+  ): Promise<SignalItem[]> => {
+    const q = site ? `site:${site} ${query}` : query;
+
+    if (this.braveApiKey) {
+      const json = await fetchJson(
+        `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(q)}&count=6`,
+        { 'x-subscription-token': this.braveApiKey }
+      );
+      return (json?.web?.results ?? []).map((r: Record<string, unknown>) => ({
+        title: decodeEntities(String(r.title ?? '')),
+        url: String(r.url ?? ''),
+        score: 0,
+        context: site ?? 'Web',
+        snippet: decodeEntities(String(r.description ?? '')).slice(0, 240)
+      }));
+    }
+
+    const html = await fetchText(
+      `https://www.mojeek.com/search?q=${encodeURIComponent(q)}`
+    );
+    const block = html.match(
+      /<ul class="results-standard">([\s\S]*?)<\/ul>/
+    )?.[1];
+    // No results container means we were served a block/captcha page, not an
+    // empty result set — report it as unavailable rather than as "searched,
+    // found nothing", which would be a lie the analysis acts on.
+    if (block === undefined) {
+      throw new Error('keyless web search returned no result markup');
+    }
+    const rows = block.match(/<li class="r\d+">[\s\S]*?<\/li>/g) ?? [];
+    return rows.slice(0, 6).map((row) => ({
+      title: decodeEntities(
+        row.match(/<a class="title"[^>]*>([\s\S]*?)<\/a>/)?.[1] ?? ''
+      ),
+      url: row.match(/<a class="title"[^>]*href="([^"]+)"/)?.[1] ?? '',
+      score: 0,
+      context: site ?? 'Web',
+      snippet: decodeEntities(
+        row.match(/<p class="s">([\s\S]*?)<\/p>/)?.[1] ?? ''
+      ).slice(0, 240)
+    }));
+  };
+
+  /**
+   * LinkedIn posts, company pages, and Pulse articles via web search.
+   * LinkedIn sells no public search API at any tier, but the public
+   * surface is indexed — this reaches the professional/market conversation
+   * without scraping LinkedIn itself.
+   */
+  private linkedin = async (query: string): Promise<SignalItem[]> => {
+    const items = await this.webSearch(query, 'linkedin.com');
+    return items
+      .filter((i) => /linkedin\.com/.test(i.url))
+      .map((i) => ({
+        ...i,
+        context: /\/pulse\//.test(i.url)
+          ? 'LinkedIn · article'
+          : /\/company\//.test(i.url)
+            ? 'LinkedIn · company'
+            : /\/posts\/|\/feed\//.test(i.url)
+              ? 'LinkedIn · post'
+              : 'LinkedIn'
+      }));
+  };
 }

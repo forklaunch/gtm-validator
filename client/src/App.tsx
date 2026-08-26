@@ -400,19 +400,20 @@ const SOURCE_LABELS: Record<string, string> = {
   devto: 'Dev.to',
   npm: 'npm registry',
   news: 'News',
-  linkedin: 'LinkedIn'
+  linkedin: 'LinkedIn (via web search)'
 };
 
 const SYSTEM_DIAGRAM = `graph TD
   B["your browser<br/>SHA-256 fingerprint computed locally"] -->|TLS| A["analysis service<br/>ForkLaunch · Node"]
   A --> Q["AI query generation"]
-  Q -->|4 queries x 7 sources| HN["Hacker News<br/>stories + comments"]
+  Q -->|4 queries x 8 sources| HN["Hacker News<br/>stories + comments"]
   Q --> GH["GitHub<br/>repo search"]
   Q --> SO["Stack Overflow<br/>StackExchange API"]
   Q --> NW["Google News<br/>RSS"]
   Q --> NP["npm registry<br/>competition"]
   Q --> DV["Dev.to<br/>practitioner posts"]
-  Q --> RD["Reddit<br/>OAuth app-only"]
+  Q --> RD["Reddit<br/>RSS · OAuth if keyed"]
+  Q --> LI["LinkedIn<br/>via web search"]
   HN --> SC["dedupe + rank by engagement<br/>evidence-weighted scoring · 5 GTM lenses"]
   GH --> SC
   SO --> SC
@@ -420,6 +421,7 @@ const SYSTEM_DIAGRAM = `graph TD
   NP --> SC
   DV --> SC
   RD --> SC
+  LI --> SC
   A --> F["Azure AI Foundry<br/>scoring · adversarial pass · blueprints"]
   SC --> F
   F --> PG[("Postgres<br/>pitch + identity encrypted<br/>AES-256-GCM")]

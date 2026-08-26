@@ -136,6 +136,11 @@ const runtimeDependencies = environmentConfig.chain({
     type: MikroORM,
     factory: () => new MikroORM(mikroOrmOptionsConfig)
   },
+  BRAVE_API_KEY: {
+    lifetime: Lifetime.Singleton,
+    type: string,
+    value: getEnvVar('BRAVE_API_KEY') ?? ''
+  },
   OtelCollector: {
     lifetime: Lifetime.Singleton,
     type: OpenTelemetryCollector,
@@ -187,13 +192,15 @@ const serviceDependencies = runtimeDependencies.chain({
       OtelCollector,
       LINKEDIN_API_TOKEN,
       REDDIT_CLIENT_ID,
-      REDDIT_CLIENT_SECRET
+      REDDIT_CLIENT_SECRET,
+      BRAVE_API_KEY
     }) =>
       new SignalsService(
         OtelCollector,
         LINKEDIN_API_TOKEN,
         REDDIT_CLIENT_ID,
-        REDDIT_CLIENT_SECRET
+        REDDIT_CLIENT_SECRET,
+        BRAVE_API_KEY
       )
   },
   GtmService: {
