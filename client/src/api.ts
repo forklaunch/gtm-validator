@@ -28,6 +28,8 @@ export interface SourceSignals {
   source: string;
   status: 'ok' | 'empty' | 'unavailable';
   query: string;
+  /** Every query trawled against this source. */
+  queries?: string[];
   items: SignalItem[];
   note?: string;
 }

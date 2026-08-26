@@ -396,17 +396,29 @@ const SOURCE_LABELS: Record<string, string> = {
   reddit: 'Reddit',
   hackernews: 'Hacker News',
   github: 'GitHub',
+  stackoverflow: 'Stack Overflow',
+  devto: 'Dev.to',
+  npm: 'npm registry',
+  news: 'News',
   linkedin: 'LinkedIn'
 };
 
 const SYSTEM_DIAGRAM = `graph TD
   B["your browser<br/>SHA-256 fingerprint computed locally"] -->|TLS| A["analysis service<br/>ForkLaunch · Node"]
   A --> Q["AI query generation"]
-  Q --> HN["Hacker News<br/>Algolia API"]
+  Q -->|4 queries x 7 sources| HN["Hacker News<br/>stories + comments"]
   Q --> GH["GitHub<br/>repo search"]
+  Q --> SO["Stack Overflow<br/>StackExchange API"]
+  Q --> NW["Google News<br/>RSS"]
+  Q --> NP["npm registry<br/>competition"]
+  Q --> DV["Dev.to<br/>practitioner posts"]
   Q --> RD["Reddit<br/>OAuth app-only"]
-  HN --> SC["evidence-weighted scoring<br/>5 GTM lenses"]
+  HN --> SC["dedupe + rank by engagement<br/>evidence-weighted scoring · 5 GTM lenses"]
   GH --> SC
+  SO --> SC
+  NW --> SC
+  NP --> SC
+  DV --> SC
   RD --> SC
   A --> F["Azure AI Foundry<br/>scoring · adversarial pass · blueprints"]
   SC --> F
@@ -791,7 +803,13 @@ export default function App() {
                     {SOURCE_LABELS[s.source] ?? s.source}
                     <span className={`badge ${s.status === 'ok' ? 'ok' : ''}`}>{s.status}</span>
                   </h3>
-                  <p className="meta">query: “{s.query}”</p>
+                  <p className="meta">
+                    {(s.queries ?? [s.query]).filter(Boolean).length > 1
+                      ? `${(s.queries ?? []).length} queries trawled: ${(s.queries ?? [])
+                          .map((q) => `“${q}”`)
+                          .join(', ')}`
+                      : `query: “${s.query}”`}
+                  </p>
                   {s.status !== 'ok' && s.note && <p className="meta">{s.note}</p>}
                   {s.items.slice(0, 5).map((item, i) => (
                     <a key={i} className="signal-item" href={item.url} target="_blank" rel="noreferrer">

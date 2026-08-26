@@ -69,7 +69,7 @@ export interface Blueprint {
 
 export class IdeaNotFoundError extends Error {}
 
-const ANALYSIS_SYSTEM_PROMPT = `You are a seasoned go-to-market analyst and venture partner evaluating startup ideas. You are rigorous, evidence-driven, and allergic to hype. You are given a startup idea and real-world signals gathered from Reddit, Hacker News, and GitHub (community chatter, builder attention, existing competition).
+const ANALYSIS_SYSTEM_PROMPT = `You are a seasoned go-to-market analyst and venture partner evaluating startup ideas. You are rigorous, evidence-driven, and allergic to hype. You are given a startup idea and real-world signals trawled from multiple public sources: Reddit and Hacker News stories/comments (community pain and builder attention), Stack Overflow (what engineers actually get stuck on), GitHub and npm (shipped competition), Dev.to (practitioner writing), and news coverage (market and competitor framing). Each source reports its own status — 'ok', 'empty' (searched, nothing found), or 'unavailable' (could not be reached). Treat 'empty' as evidence about the world; treat 'unavailable' as missing evidence, not as a negative signal.
 
 Score the idea 0-100 on exactly five dimensions:
 1. marketPull — Is there evidence people actively want this? Weigh the provided signals heavily: pain expressed in communities, search/discussion volume, existing demand workarounds.
@@ -93,7 +93,12 @@ Respond with ONLY a JSON object:
   "summary": "…"
 }`;
 
-const QUERY_SYSTEM_PROMPT = `Given a startup idea, produce the 2 best web search queries for gauging real-world demand and competition. The first should target community pain/demand discussions, the second should target existing products/repositories. Keep each under 6 words. Respond ONLY with JSON: {"queries": ["…", "…"]}`;
+const QUERY_SYSTEM_PROMPT = `Given a startup idea, produce the 4 best web search queries for gauging real-world demand and competition. Each should attack a different angle, in this order:
+1. the pain/frustration people express about the status quo (community discussion wording, not product wording)
+2. existing products, tools, or repositories that already solve it
+3. the market/industry framing a journalist or analyst would use
+4. the technical problem an engineer would search when building it
+Keep each under 6 words and avoid repeating the same nouns across all four. Respond ONLY with JSON: {"queries": ["…", "…", "…", "…"]}`;
 
 const REFINE_SYSTEM_PROMPT = `You are a startup pitch editor. Rewrite the pitch to directly address the analyst feedback, deepest on the focus dimension — keep the founder's core idea and voice, add concrete specifics (ICP, wedge, channel, pricing) as plans rather than fabricated traction. Sharpen the title only if it stays recognizable. Respond ONLY with JSON: {"title": "…", "pitch": "…", "changes": ["…"]}`;
 
@@ -342,7 +347,10 @@ export class GtmService {
     version: number
   ): Promise<ReportPayload> => {
     const queries = await this.searchQueries(idea);
-    const signals = await this.signals.gather(queries);
+    const signals = await this.signals.gather(
+      queries,
+      `${idea.title} ${idea.pitch}`
+    );
 
     let analysis: {
       dimensions: GtmDimension[];
@@ -431,14 +439,26 @@ export class GtmService {
         const queries = (out.queries ?? []).filter(
           (q): q is string => typeof q === 'string' && q.trim() !== ''
         );
-        if (queries.length) return queries.slice(0, 2);
+        if (queries.length) return queries.slice(0, 4);
       } catch (error) {
         this.openTelemetryCollector.info(
           `[gtm] query generation failed, falling back to title: ${(error as Error).message}`
         );
       }
     }
-    return [idea.title, idea.title];
+    // No model available: derive varied fallbacks from the idea itself
+    // rather than trawling the same string four times.
+    const words = idea.title
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((w) => w.length > 3);
+    const core = words.slice(0, 3).join(' ') || idea.title;
+    return [
+      idea.title,
+      core,
+      `${core} software`,
+      `${core} alternatives`
+    ];
   };
 
   /** Trim signals for prompt economy: top items only, no long snippets. */
@@ -446,13 +466,15 @@ export class GtmService {
     signals.map((s) => ({
       source: s.source,
       status: s.status,
-      query: s.query,
+      queriesTrawled: s.queries ?? [s.query],
       note: s.note,
       items: s.items.slice(0, 6).map((i) => ({
         title: i.title,
         score: i.score,
         comments: i.comments,
-        context: i.context
+        context: i.context,
+        matchedQuery: i.matchedQuery,
+        snippet: i.snippet?.slice(0, 160)
       }))
     }));
 
